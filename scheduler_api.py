@@ -63,13 +63,23 @@ def schedule_message(message_id: str, schedule_timestamp: str, webhook_url: str,
     # Parse da data ISO com timezone
     schedule_time = datetime.fromisoformat(schedule_timestamp.replace('Z', '+00:00'))
     current_time = datetime.now(pytz.UTC)
-    
-    # Se a data já passou, executa imediatamente
-    if schedule_time <= current_time:
-        print(f"[{datetime.now().isoformat()}] Schedule time in the past, firing immediately - ID: {message_id}")
+
+    # Hardening: calcular diferença temporal em segundos (positivo = futuro, negativo = passado)
+    time_diff_seconds = (schedule_time - current_time).total_seconds()
+
+    # TRAVA DE SEGURANÇA: NUNCA executa antes do horário agendado
+    if time_diff_seconds > 0:
+        # Job é futuro - agenda normalmente
+        pass
+    else:
+        # Job no horário ou atrasado - executa normalmente
+        if time_diff_seconds == 0:
+            print(f"[{datetime.now().isoformat()}] Executing webhook at scheduled time - ID: {message_id}, scheduleTo: {schedule_time.isoformat()}")
+        else:
+            print(f"[{datetime.now().isoformat()}] ⚠️  WARN: Executing late webhook (delay: {abs(time_diff_seconds):.2f}s) - ID: {message_id}, scheduleTo: {schedule_time.isoformat()}")
         fire_webhook(message_id, webhook_url, payload)
         return
-    
+
     # Agenda para a data específica usando APScheduler
     try:
         scheduler.add_job(
@@ -79,7 +89,7 @@ def schedule_message(message_id: str, schedule_timestamp: str, webhook_url: str,
             id=message_id,
             replace_existing=True
         )
-        print(f"[{datetime.now().isoformat()}] Job scheduled for {schedule_time.isoformat()} - ID: {message_id}")
+        print(f"[{datetime.now().isoformat()}] Job scheduled for {schedule_time.isoformat()} (in {time_diff_seconds:.2f}s) - ID: {message_id}")
     except Exception as e:
         print(f"[{datetime.now().isoformat()}] Failed to schedule job - ID: {message_id}, Error: {e}")
         raise
